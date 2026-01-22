@@ -1,3 +1,7 @@
+'''
+OpenAIとAzure AI Searchを組み合わせたベクトル検索の確認
+'''
+
 from dotenv import load_dotenv
 import os
 from azure.core.credentials import AzureKeyCredential
@@ -20,14 +24,14 @@ docs = [
 ]
 
 # OpenAIクライアントの作成
-client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Azure Searchクライアントの作成
 search_client = SearchClient(service_endpoint, index_name, credential)
 
 
 # 引数からベクトル化したデータを取得
 async def get_embedding(text):
-    response = await client.embeddings.create(
+    response = await openai_client.embeddings.create(
         model="text-embedding-3-small", input=text
     )
     return response.data[0].embedding

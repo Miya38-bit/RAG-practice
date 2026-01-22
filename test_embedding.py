@@ -1,3 +1,7 @@
+'''
+ベクトル化の確認
+'''
+
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
