@@ -1,9 +1,7 @@
-.venv/
-venv/
-
-__pycache__/
-*.py[cod]
-
-.env
-
+# Editor
 .vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

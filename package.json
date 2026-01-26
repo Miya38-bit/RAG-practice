@@ -1,0 +1,13 @@
+{
+  "name": "rag-practice-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
+    "dev:frontend": "cd frontend && pnpm dev",
+    "dev:backend": "cd backend && uvicorn main:app --reload"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
