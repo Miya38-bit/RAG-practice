@@ -1,27 +1,13 @@
 from fastapi import FastAPI
-from dotenv import load_dotenv
-import os
-from openai import AsyncOpenAI
 from pydantic import BaseModel
-from azure.core.credentials import AzureKeyCredential
-from azure.search.documents import SearchClient
 from fastapi.middleware.cors import CORSMiddleware
-
-# 環境変数を読み込む
-load_dotenv()
-
-# 接続定義
-service_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
-index_name = os.getenv("AZURE_SEARCH_INDEX_NAME")
-credential = AzureKeyCredential(os.getenv("AZURE_SEARCH_API_KEY"))
-
-# OpenAIクライアントを生成
-openai_client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-# Azure Searchクライアントを生成
-search_client = SearchClient(service_endpoint, index_name, credential)
+from utils import get_embedding
+from clients import openai_client, search_client
 
 # FastAPIインスタンスを生成
 app = FastAPI()
+
+# CORS設定
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
@@ -31,24 +17,33 @@ app.add_middleware(
 )
 
 
-# 引数からベクトル化したデータを取得
-async def get_embedding(test: str):
-    response = await openai_client.embeddings.create(
-        model="text-embedding-3-small", input=test
-    )
-    return response.data[0].embedding
-
-
 class ChatRequest(BaseModel):
-    message: str
+    messages: list[dict[str, str]]
 
 
 @app.post("/chat")
 async def create_chat(request: ChatRequest):
     try:
+        # 通訳用の質問作成
+        history_messages = f"これまでの会話履歴から質問の意図を誰が見ても意味がわかる検索ワードに書き直してください\n 【質問】{request.messages[-1]['content']}\n【会話履歴】\n"
+        for message in request.messages:
+            history_messages += f"{message['role']}: {message['content']}\n"
+
+        # 質問の意図を検索ワードに書き直してもらう
+        response_rewrite = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "user",
+                    "content": history_messages
+                }
+            ]
+        )
+        print("検索ワード: ", response_rewrite.choices[0].message.content)
+
         # ベクトル化
         print("Embedding作成中...")
-        vector_query = await get_embedding(request.message)
+        vector_query = await get_embedding(response_rewrite.choices[0].message.content)
 
         # ベクトルデータから参考情報検索
         print("ベクトルデータから参考情報検索中...")
@@ -57,27 +52,31 @@ async def create_chat(request: ChatRequest):
             vector_queries=[
                 {
                     "vector": vector_query,
-                    "k": 1,
+                    "k": 2,
                     "fields": "embedding",
                     "kind": "vector",
                 }
             ],
         )
-        
-        # 参考情報の作成
-        context = "".join(result["content"] for result in results)
-        print("参考情報:", context)
 
+        # 参考情報の作成
+        context = ""
+        for result in results:
+            context += f"【出典: {result['source']} (P.{result['page']}) / カテゴリ: {result['category']}】\n"
+            context += f"{result['content']}\n\n"
+
+        system_messages = {
+            "role": "system",
+            "content": f"以下の情報を元に質問に答えてください。\n\n【参考情報】\n{context}",
+        }
         # 参考情報をもとに質問応答
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"以下の情報を元に質問に答えてください。\n\n【参考情報】\n{context}\n\n【質問】\n{request.message}",
-                }
-            ],
+            messages=[system_messages] + request.messages,
         )
+        print("合計トークン数: ", response.usage.total_tokens)
+        print("プロンプトトークン数: ", response.usage.prompt_tokens)
+        print("応答トークン数: ", response.usage.completion_tokens)
         return {"message": response.choices[0].message.content, "status": "success"}
     except Exception as e:
         return {"message": str(e), "status": "error"}

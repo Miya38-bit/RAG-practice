@@ -33,17 +33,22 @@ function Container({
  * @param message ユーザーの入力
  * @returns バックエンドからの応答
  */
-async function fetchChat(url: string, message: string): Promise<Response> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ message }),
-  });
-  const data = await response.json();
+async function fetchChat(url: string, messages: Message[]): Promise<Response> {
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messages }),
+    });
+    const data = await response.json();
 
-  return data;
+    return data;
+  } catch (error) {
+    console.error('Error fetching chat:', error);
+    return { message: 'Error fetching chat', status: 'error' };
+  }
 }
 
 /**
@@ -66,7 +71,7 @@ export default function Home() {
     <main className="min-h-screen bg-stone-800 text-stone-200">
       <header className="sticky top-0 p-5 bg-stone-900/80 backdrop-blur-md border-b border-orange-800/50 shadow-lg shadow-orange-500/50">
         <Container>
-          <h1 className="text-2xl font-bold">RAG Sample Chat</h1>
+          <h1 className="text-2xl font-bold">Internal Rules Chatbot</h1>
         </Container>
       </header>
       <section className="p-5 flex flex-col gap-4 max-w-4xl mx-auto pb-24">
@@ -106,25 +111,22 @@ export default function Home() {
               e.preventDefault();
               if (!input) return;
 
+              const newHistoryMessages: Message[] = [...messages, { role: 'user', content: input }];
+
               // ユーザーの入力をメッセージに追加
-              setMessages((prev) => [
-                ...prev,
-                { role: 'user', content: input },
-              ]);
+              setMessages(newHistoryMessages);
               // 入力欄を空にする
               setInput('');
 
               // バックエンドにリクエストを送信
               setLoading(true);
+              console.log(newHistoryMessages.slice(-10));
               const response = await fetchChat(
                 'http://127.0.0.1:8000/chat',
-                input
+                newHistoryMessages.slice(-10)
               );
 
-              setMessages((prev) => [
-                ...prev,
-                { role: 'assistant', content: response.message },
-              ]);
+              setMessages([...newHistoryMessages, { role: 'assistant', content: response.message }]);
 
               setLoading(false);
             }}

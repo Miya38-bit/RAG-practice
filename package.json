@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:frontend\" \"npm:dev:backend\"",
     "dev:frontend": "cd frontend && pnpm dev",
-    "dev:backend": "cd backend && uvicorn main:app --reload"
+    "dev:backend": "cd backend && set PYTHONIOENCODING=utf-8 && .venv\\Scripts\\python -m uvicorn main:app --reload"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
