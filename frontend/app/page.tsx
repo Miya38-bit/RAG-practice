@@ -7,11 +7,6 @@ type Message = {
   content: string;
 };
 
-type Response = {
-  message: string;
-  status: string;
-};
-
 /**
  * コンテナーコンポーネント
  * @param children 子要素
@@ -33,7 +28,7 @@ function Container({
  * @param message ユーザーの入力
  * @returns バックエンドからの応答
  */
-async function fetchChat(url: string, messages: Message[]): Promise<Response> {
+async function fetchChat(url: string, messages: Message[]) {
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -42,12 +37,12 @@ async function fetchChat(url: string, messages: Message[]): Promise<Response> {
       },
       body: JSON.stringify({ messages }),
     });
-    const data = await response.json();
+    const reader = response.body?.getReader();
 
-    return data;
+    return reader;
   } catch (error) {
     console.error('Error fetching chat:', error);
-    return { message: 'Error fetching chat', status: 'error' };
+    return null;
   }
 }
 
@@ -111,24 +106,59 @@ export default function Home() {
               e.preventDefault();
               if (!input) return;
 
-              const newHistoryMessages: Message[] = [...messages, { role: 'user', content: input }];
+              // 過去の会話とユーザーメッセージを新規配列に追加
+              const newHistoryMessages: Message[] = [
+                ...messages,
+                { role: 'user', content: input },
+              ];
 
-              // ユーザーの入力をメッセージに追加
+              // ユーザーの入力を含めた会話履歴でstateを更新
               setMessages(newHistoryMessages);
               // 入力欄を空にする
               setInput('');
 
               // バックエンドにリクエストを送信
               setLoading(true);
-              console.log(newHistoryMessages.slice(-10));
-              const response = await fetchChat(
+              const reader = await fetchChat(
                 'http://127.0.0.1:8000/chat',
                 newHistoryMessages.slice(-10)
               );
 
-              setMessages([...newHistoryMessages, { role: 'assistant', content: response.message }]);
+              console.log(reader);
+              if (!reader) {
+                setLoading(false);
+                return;
+              }
 
-              setLoading(false);
+              // AIの回答用の空メッセージをstateに追加
+              let aiMessage = '';
+              setMessages((prev) => [
+                ...prev,
+                { role: 'assistant', content: '' },
+              ]);
+
+              // AIの回答をstateに追加
+              const decoder = new TextDecoder();
+              try {
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+
+                  // バイナリからテキスト変換
+                  const text = decoder.decode(value, { stream: true });
+                  aiMessage += text;
+                  // stateを更新
+                  setMessages((prev) => {
+                    const newMessages = [...prev];
+                    newMessages[newMessages.length - 1].content = aiMessage;
+                    return newMessages;
+                  });
+                }
+              } catch (e) {
+                console.error(e);
+              } finally {
+                setLoading(false);
+              }
             }}
           >
             <input

@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 from utils import get_embedding
 from clients import openai_client, search_client
+from fastapi.responses import StreamingResponse
 
 # FastAPIインスタンスを生成
 app = FastAPI()
@@ -21,6 +22,19 @@ class ChatRequest(BaseModel):
     messages: list[dict[str, str]]
 
 
+async def stream_chat(request: ChatRequest, system_messages: dict[str, str]):
+    # 参考情報をもとに質問応答
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[system_messages] + request.messages,
+        stream=True,
+    )
+
+    async for chunk in response:
+        if chunk.choices[0].delta.content is not None:
+            yield chunk.choices[0].delta.content
+
+
 @app.post("/chat")
 async def create_chat(request: ChatRequest):
     try:
@@ -32,12 +46,7 @@ async def create_chat(request: ChatRequest):
         # 質問の意図を検索ワードに書き直してもらう
         response_rewrite = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "user",
-                    "content": history_messages
-                }
-            ]
+            messages=[{"role": "user", "content": history_messages}],
         )
         print("検索ワード: ", response_rewrite.choices[0].message.content)
 
@@ -69,14 +78,10 @@ async def create_chat(request: ChatRequest):
             "role": "system",
             "content": f"以下の情報を元に質問に答えてください。\n\n【参考情報】\n{context}",
         }
-        # 参考情報をもとに質問応答
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[system_messages] + request.messages,
+
+        return StreamingResponse(
+            stream_chat(request, system_messages), media_type="text/event-stream"
         )
-        print("合計トークン数: ", response.usage.total_tokens)
-        print("プロンプトトークン数: ", response.usage.prompt_tokens)
-        print("応答トークン数: ", response.usage.completion_tokens)
-        return {"message": response.choices[0].message.content, "status": "success"}
+
     except Exception as e:
         return {"message": str(e), "status": "error"}
