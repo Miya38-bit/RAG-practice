@@ -421,7 +421,9 @@ rag-practice/
 - `try-except` のベストプラクティス
 - カスタム例外クラスの作成
 - `logging` モジュールによる適切なログレベル設計
-- 構造化ログ（JSON形式）の導入検討
+- **構造化ログ（JSON形式）の導入** ⭐
+- **リクエスト/レスポンスの全量ログ** ⭐
+- **本番運用を想定したログレベル設計** ⭐
 
 #### 🛠️ 実践課題: rag-practiceに適用
 
@@ -429,25 +431,62 @@ rag-practice/
    - `main.py`, `utils.py`, `clients.py` の全関数に型ヒントを追加
    - `mypy --strict` でエラーがないか確認
 
-2. **ロガーの実装**
+2. **構造化ロガーの実装**
 
    ```python
    # backend/logger.py を新規作成
    import logging
+   import json
+   from datetime import datetime
+
+   class JSONFormatter(logging.Formatter):
+       def format(self, record):
+           log_data = {
+               "timestamp": datetime.utcnow().isoformat(),
+               "level": record.levelname,
+               "message": record.getMessage(),
+               "module": record.module,
+           }
+           if record.exc_info:
+               log_data["exception"] = self.formatException(record.exc_info)
+           return json.dumps(log_data, ensure_ascii=False)
 
    def get_logger(name: str) -> logging.Logger:
        logger = logging.getLogger(name)
        handler = logging.StreamHandler()
-       formatter = logging.Formatter(
-           '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-       )
-       handler.setFormatter(formatter)
+       handler.setFormatter(JSONFormatter())
        logger.addHandler(handler)
        logger.setLevel(logging.INFO)
        return logger
    ```
 
-3. **カスタム例外クラス**
+3. **リクエスト/レスポンスログミドルウェア**
+
+   ```python
+   # backend/middleware.py を新規作成
+   import time
+   from starlette.middleware.base import BaseHTTPMiddleware
+   from logger import get_logger
+
+   logger = get_logger(__name__)
+
+   class LoggingMiddleware(BaseHTTPMiddleware):
+       async def dispatch(self, request, call_next):
+           start_time = time.time()
+
+           # リクエストログ
+           logger.info(f"Request: {request.method} {request.url.path}")
+
+           response = await call_next(request)
+
+           # レスポンスログ
+           duration = time.time() - start_time
+           logger.info(f"Response: {response.status_code} - {duration:.3f}s")
+
+           return response
+   ```
+
+4. **カスタム例外クラス**
 
    ```python
    # backend/exceptions.py を新規作成
@@ -469,6 +508,7 @@ rag-practice/
 - [Python 型ヒント公式ドキュメント](https://docs.python.org/ja/3/library/typing.html)
 - [Real Python - Async IO](https://realpython.com/async-io-python/)
 - [Python Logging HOWTO](https://docs.python.org/ja/3/howto/logging.html)
+- [FastAPI - Request/Response Logging](https://medium.com/@joerosborne/how-to-log-every-request-and-response-in-fastapi-dcf8d2be2055) ⭐
 
 ---
 
@@ -599,11 +639,13 @@ rag-practice/
 - 処理時間の計測
 - 認証ミドルウェアの考え方
 
-**例外処理の統一**
+**例外処理の統一** ⭐
 
 - `HTTPException` の使い方
-- カスタム例外ハンドラーの登録
-- エラーレスポンスの統一フォーマット
+- **カスタム例外ハンドラーの登録（グローバルハンドラー）**
+- **エラーレスポンスの統一フォーマット**
+- **本番環境でのエラー情報の適切な隠蔽**
+- **例外発生時のログ記録とアラート設計**
 
 **pytest 基礎**
 
@@ -629,17 +671,37 @@ rag-practice/
            return response
    ```
 
-2. **例外ハンドラーの統一**
+2. **グローバル例外ハンドラーの実装**
 
    ```python
    # backend/exception_handlers.py
-   from fastapi import Request
+   from fastapi import Request, status
    from fastapi.responses import JSONResponse
+   from logger import get_logger
+   import traceback
+
+   logger = get_logger(__name__)
 
    async def rag_exception_handler(request: Request, exc: RAGException):
+       # エラーログ記録
+       logger.error(f"RAG Error: {str(exc)}", exc_info=True)
+
        return JSONResponse(
-           status_code=500,
-           content={"error": str(exc), "type": exc.__class__.__name__}
+           status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+           content={
+               "error": "システムエラーが発生しました",  # 本番では詳細を隠す
+               "type": exc.__class__.__name__,
+               "detail": str(exc) if app.debug else None  # デバッグ時のみ詳細表示
+           }
+       )
+
+   async def general_exception_handler(request: Request, exc: Exception):
+       # 予期しないエラーの記録
+       logger.critical(f"Unexpected error: {str(exc)}", exc_info=True)
+
+       return JSONResponse(
+           status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+           content={"error": "予期しないエラーが発生しました"}
        )
    ```
 
@@ -862,80 +924,128 @@ rag-practice/
 
 #### ⏰ 時間配分
 
-| 時間             | 内容                            |
-| :--------------- | :------------------------------ |
-| 9:00-11:00 (2h)  | SQLAlchemy ORM 基礎             |
-| 11:00-13:00 (2h) | Alembic によるマイグレーション  |
-| 14:00-16:00 (2h) | 会話履歴のデータモデル設計      |
-| 16:00-18:00 (2h) | 🛠️ 実践課題: プロジェクトに適用 |
+| 時間             | 内容                                |
+| :--------------- | :---------------------------------- |
+| 9:00-10:00 (1h)  | PostgreSQL (Docker) 環境構築        |
+| 10:00-12:00 (2h) | SQLModel 基礎 + モデル定義          |
+| 12:00-14:00 (2h) | Alembic マイグレーション            |
+| 14:00-16:00 (2h) | リポジトリパターンによるCRUD実装    |
+| 16:00-18:00 (2h) | 🛠️ 実践課題: 会話履歴機能の完全実装 |
 
 #### 📖 学習内容
 
-**SQLAlchemy ORM**
+**PostgreSQL (Docker)**
 
-- エンジン、セッション、モデルの概念
-- リレーションシップ（1:N, N:M）
-- クエリの書き方（select, insert, update, delete）
+- Docker Compose による PostgreSQL 環境構築
+- データベース、ユーザー、パスワードの設定
+- ローカル開発環境でのDB接続
+
+**SQLModel** ⭐
+
+- Pydantic + SQLAlchemy の統合
+- モデル定義（テーブルとPydanticモデルの兼用）
+- リレーションシップ（Relationship）
+- 基本的なCRUD操作
 
 **Alembic**
 
-- マイグレーションファイルの生成
-- アップグレード/ダウングレード
-- 本番環境でのマイグレーション運用
+- Alembic初期化とマイグレーション設定
+- オートマイグレーション（`alembic revision --autogenerate`）
+- マイグレーション適用（`alembic upgrade head`）
 
-**データモデル設計**
+**リポジトリパターン** ⭐
 
-- Conversation と Message の1:N関係
-- インデックス設計（検索性能）
-- 論理削除 vs 物理削除
+- データアクセスロジックの分離
+- `repositories/` ディレクトリの作成
+- テスト可能な設計
 
 #### 🛠️ 実践課題: rag-practiceに適用
 
-1. **SQLAlchemy モデル定義**
+1. **Docker Composeで PostgreSQL 環境構築**
+
+   ```yaml
+   # docker-compose.yml（既存ファイルに追加）
+   services:
+     db:
+       image: postgres:15
+       environment:
+         POSTGRES_USER: raguser
+         POSTGRES_PASSWORD: ragpass
+         POSTGRES_DB: rag_practice
+       ports:
+         - "5432:5432"
+       volumes:
+         - postgres_data:/var/lib/postgresql/data
+
+   volumes:
+     postgres_data:
+   ```
+
+2. **SQLModel モデル定義** ⭐
 
    ```python
    # backend/models.py を新規作成
-   from sqlalchemy import Column, String, Text, DateTime, ForeignKey
-   from sqlalchemy.orm import relationship, declarative_base
+   from sqlmodel import Field, Relationship, SQLModel
    from datetime import datetime
+   from typing import Optional
    import uuid
 
-   Base = declarative_base()
-
-   class Conversation(Base):
+   class Conversation(SQLModel, table=True):
        __tablename__ = "conversations"
-       id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-       created_at = Column(DateTime, default=datetime.utcnow)
-       messages = relationship("Message", back_populates="conversation")
 
-   class Message(Base):
+       id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+       created_at: datetime = Field(default_factory=datetime.utcnow)
+
+       # Relationship
+       messages: list["Message"] = Relationship(back_populates="conversation")
+
+   class Message(SQLModel, table=True):
        __tablename__ = "messages"
-       id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-       conversation_id = Column(String(36), ForeignKey("conversations.id"))
-       role = Column(String(20), nullable=False)
-       content = Column(Text, nullable=False)
-       created_at = Column(DateTime, default=datetime.utcnow)
-       conversation = relationship("Conversation", back_populates="messages")
+
+       id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+       conversation_id: str = Field(foreign_key="conversations.id")
+       role: str
+       content: str
+       created_at: datetime = Field(default_factory=datetime.utcnow)
+
+       # Relationship
+       conversation: Optional[Conversation] = Relationship(back_populates="messages")
    ```
 
-2. **CRUD操作の実装**
+3. **リポジトリパターンでCRUD実装** ⭐
 
    ```python
-   # backend/crud.py を新規作成
-   async def create_conversation(db: Session) -> Conversation:
-       ...
+   # backend/repositories/conversation_repository.py を新規作成
+   from sqlmodel import Session, select
+   from models import Conversation, Message
 
-   async def add_message(db: Session, conv_id: str, role: str, content: str):
-       ...
+   class ConversationRepository:
+       def __init__(self, session: Session):
+           self.session = session
 
-   async def get_conversation_history(db: Session, conv_id: str) -> list[Message]:
-       ...
+       def create_conversation(self) -> Conversation:
+           conversation = Conversation()
+           self.session.add(conversation)
+           self.session.commit()
+           self.session.refresh(conversation)
+           return conversation
+
+       def add_message(self, conv_id: str, role: str, content: str) -> Message:
+           message = Message(conversation_id=conv_id, role=role, content=content)
+           self.session.add(message)
+           self.session.commit()
+           return message
+
+       def get_conversation_history(self, conv_id: str) -> list[Message]:
+           statement = select(Message).where(Message.conversation_id == conv_id)
+           return self.session.exec(statement).all()
    ```
 
 #### 📚 参考リソース
 
-- [SQLAlchemy 2.0 チュートリアル](https://docs.sqlalchemy.org/en/20/tutorial/)
-- [FastAPI + SQLAlchemy](https://fastapi.tiangolo.com/tutorial/sql-databases/)
+- [SQLModel 公式ドキュメント](https://sqlmodel.tiangolo.com/) ⭐
+- [FastAPI + SQLModel チュートリアル](https://sqlmodel.tiangolo.com/tutorial/fastapi/)
+- [Docker Compose で PostgreSQL](https://hub.docker.com/_/postgres)
 - [Alembic チュートリアル](https://alembic.sqlalchemy.org/en/latest/tutorial.html)
 
 ---
@@ -1095,28 +1205,42 @@ rag-practice/
 
 ---
 
-### Day 9: Production Readiness
+### Day 9: Architecture & Production Readiness
 
 #### 💡 なぜこれを学ぶのか
 
-| 学習内容   | なぜ必要か                           | できるようになること             |
-| :--------- | :----------------------------------- | :------------------------------- |
-| Docker     | 環境を統一してデプロイするモダン標準 | どの環境でも同じ動作を保証できる |
-| 設定管理   | 機密情報の安全な管理は必須           | APIキーを安全に扱える            |
-| 結合テスト | 全体として動作することを保証         | 自信を持ってデプロイできる       |
+| 学習内容                          | なぜ必要か                           | できるようになること             |
+| :-------------------------------- | :----------------------------------- | :------------------------------- |
+| **レイヤー分離** ⭐               | main.pyの肥大化を防ぎ保守性向上      | 移植性・テスト可能性が向上する   |
+| **クリーンアーキテクチャ基礎** ⭐ | 実務プロジェクトで広く采用           | 保守しやすい設計ができる         |
+| Docker                            | 環境を統一してデプロイするモダン標準 | どの環境でも同じ動作を保証できる |
+| 設定管理                          | 機密情報の安全な管理は必須           | APIキーを安全に扱える            |
 
-**目標**: 本番環境にデプロイ可能な状態にする。
+**目標**: レイヤー分離で保守性を向上させ、Docker化してデプロイ可能にする。
 
 #### ⏰ 時間配分
 
-| 時間             | 内容                 |
-| :--------------- | :------------------- |
-| 9:00-11:00 (2h)  | Docker化             |
-| 11:00-13:00 (2h) | 環境変数と設定管理   |
-| 14:00-16:00 (2h) | セキュリティ考慮事項 |
-| 16:00-18:00 (2h) | 🛠️ 結合テスト        |
+| 時間             | 内容                                                             |
+| :--------------- | :--------------------------------------------------------------- |
+| 9:00-12:00 (3h)  | 🏗️ レイヤー分離リファクタリング（routers/services/repositories） |
+| 12:00-14:00 (2h) | Docker化 + 環境変数管理                                          |
+| 14:00-16:00 (2h) | セキュリティ強化                                                 |
+| 16:00-18:00 (2h) | 🛠️ 結合テスト + デプロイ確認                                     |
 
 #### 📖 学習内容
+
+**レイヤー分離リファクタリング** ⭐
+
+- **3層アーキテクチャの実装**
+  - `routers/`: プレゼンテーション層（HTTPリクエストの処理）
+  - `services/`: ビジネスロジック層（Query Rewriting, RAGパイプライン）
+  - `repositories/`: データアクセス層（DB, Azure AI Search）
+- **依存性の逆転（DIP）**
+  - インターフェースを用いた結合度の低減
+  - テスト時のモック差し替え
+- **main.pyの簡素化**
+  - エンドポイントはroutersに移動
+  - ビジネスロジックはservicesへ
 
 **Docker化**
 
@@ -1128,17 +1252,66 @@ rag-practice/
 
 - pydantic-settings による型安全な設定
 - 環境ごとの設定切り替え
-- シークレット管理のベストプラクティス
 
 **セキュリティ**
 
 - 入力のサニタイズ
-- レート制限
 - CORS設定の本番向け調整
 
 #### 🛠️ 実践課題: rag-practiceに適用
 
-1. **Dockerfile 作成**
+1. **3層アーキテクチャへのリファクタリング**
+
+   ```python
+   # backend/routers/chat.py
+   from fastapi import APIRouter, Depends
+   from services.chat_service import ChatService
+   from schemas import ChatRequest, ChatResponse
+
+   router = APIRouter(prefix="/api/v1", tags=["chat"])
+
+   @router.post("/chat", response_model=ChatResponse)
+   async def chat(
+       request: ChatRequest,
+       chat_service: ChatService = Depends()
+   ):
+       return await chat_service.process_chat(request)
+   ```
+
+   ```python
+   # backend/services/chat_service.py
+   class ChatService:
+       def __init__(
+           self,
+           search_repo: SearchRepository,
+           conversation_repo: ConversationRepository,
+           query_rewriter: QueryRewriter
+       ):
+           self.search_repo = search_repo
+           self.conversation_repo = conversation_repo
+           self.query_rewriter = query_rewriter
+
+       async def process_chat(self, request: ChatRequest):
+           # ビジネスロジックを集約
+           rewritten_query = await self.query_rewriter.rewrite(request)
+           search_results = await self.search_repo.hybrid_search(rewritten_query)
+           response = await self._generate_response(search_results)
+           await self.conversation_repo.save_message(request, response)
+           return response
+   ```
+
+   ```python
+   # backend/repositories/search_repository.py
+   class SearchRepository:
+       def __init__(self, search_client: SearchClient):
+           self.client = search_client
+
+       async def hybrid_search(self, query: str) -> list[dict]:
+           # Azure AI Search へのアクセスを抽象化
+           ...
+   ```
+
+2. **Dockerfile 作成**
 
    ```dockerfile
    # backend/Dockerfile
@@ -1155,7 +1328,7 @@ rag-practice/
    CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
    ```
 
-2. **設定クラス**
+3. **設定クラス**
 
    ```python
    # backend/config.py
@@ -1174,10 +1347,10 @@ rag-practice/
    settings = Settings()
    ```
 
-3. **結合テストの実行**
+4. **結合テストの実行**
    - 全エンドポイントの動作確認
    - エラーケースのテスト
-   - パフォーマンス確認
+   - レイヤー分離後の動作確認
 
 ---
 
@@ -1196,15 +1369,76 @@ rag-practice/
 
 #### 推奨タスク
 
-1. **CI/CD パイプライン**
+1. **完璧なクリーンアーキテクチャ** ⭐
+
+   Day 9で実装した3層アーキテクチャをさらに発展させます。
+
+   **Use Case層の追加**
+
+   ```python
+   # backend/use_cases/chat_use_case.py
+   from entities.conversation import ConversationEntity
+
+   class ChatUseCase:
+       """
+       ビジネスルールを含むユースケース層
+       サービス層とは異なり、エンティティを中心に設計
+       """
+       def __init__(self, search_repo, conversation_repo):
+           self.search_repo = search_repo
+           self.conversation_repo = conversation_repo
+
+       async def execute(self, user_query: str, conversation_id: str) -> ConversationEntity:
+           # エンティティでビジネスルールを表現
+           conversation = await self.conversation_repo.find_by_id(conversation_id)
+           conversation.add_user_message(user_query)
+
+           search_results = await self.search_repo.search(user_query)
+           response = conversation.generate_response(search_results)
+
+           await self.conversation_repo.save(conversation)
+           return conversation
+   ```
+
+   **Entity層の追加**
+
+   ```python
+   # backend/entities/conversation.py
+   from dataclasses import dataclass
+
+   @dataclass
+   class ConversationEntity:
+       """
+       ビジネスロジックを持つエンティティ
+       DBモデルとは独立した純粋なドメインオブジェクト
+       """
+       id: str
+       messages: list[Message]
+
+       def add_user_message(self, content: str):
+           # ビジネスルール: メッセージの追加制約
+           if len(self.messages) > 100:
+               raise ValueError("会話が長すぎます")
+           self.messages.append(Message(role="user", content=content))
+
+       def generate_response(self, search_results: list) -> str:
+           # ビジネスルール: 回答生成ロジック
+           ...
+   ```
+
+   **参考リソース**:
+   - [Clean Architecture (書籍)](https://www.amazon.co.jp/dp/B07FSBHS2V)
+   - [Python Clean Architecture Example](https://github.com/Enforcer/clean-architecture)
+
+2. **CI/CD パイプライン**
    - GitHub Actions による自動テスト
    - Azure へのデプロイフロー確認
 
-2. **高度なプロンプト技術**
+3. **高度なプロンプト技術**
    - Chain-of-Thought プロンプティング
    - Function Calling (Tools) の実装
 
-3. **最終確認**
+4. **最終確認**
    - 全機能の動作確認
    - 実践で想定される質問への回答準備
 
