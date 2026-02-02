@@ -15,13 +15,13 @@
 
 ```
 【学習の流れ】
-Day 1-3: コード品質の向上（Python/FastAPI）
+Day 1-3: コード品質の向上（ロギング、エラーハンドリング、テスト）
     ↓
-Day 4-5: 検索精度の向上（Azure AI Search）
+Day 4-5: 検索精度の向上（ハイブリッド検索、セマンティック検索）
     ↓
-Day 6-8: 機能拡張（DB永続化、RAG精度向上）
+Day 6-8: DB永続化とRAG精度向上（SQLModel + PostgreSQL、クエリ改善）
     ↓
-Day 9: 本番化（Docker、テスト）
+Day 9: アーキテクチャとデプロイ準備（レイヤー分離、Docker化）
 ```
 
 ---
@@ -180,40 +180,53 @@ results = search_client.search(
 
 ---
 
-### Day 6 完了後: 会話履歴の永続化
+### Day 6 完了後: SQLModel + PostgreSQL によるDB永続化 ⭐
 
-| 追加されるファイル    | 内容             |
-| :-------------------- | :--------------- |
-| `backend/models.py`   | SQLAlchemyモデル |
-| `backend/crud.py`     | CRUD操作         |
-| `backend/database.py` | DB接続設定       |
-| `alembic/`            | マイグレーション |
+| 追加されるファイル                                | 内容                         |
+| :------------------------------------------------ | :--------------------------- |
+| `backend/models.py`                               | SQLModel モデル定義          |
+| `backend/repositories/conversation_repository.py` | リポジトリパターンによるCRUD |
+| `backend/database.py`                             | DB接続設定                   |
+| `docker-compose.yml`                              | PostgreSQL 環境              |
+| `alembic/`                                        | マイグレーション             |
 
 **チャットボットの変化:**
 
+- 🆕 **SQLModel による型安全なDB操作** → Pydantic統合で開発体験向上
+- 🆕 **PostgreSQL をDocker環境で使用** → 本番環境に近い構成
+- 🆕 **リポジトリパターンでデータアクセス層を分離** → テスト可能で保守しやすい設計
 - 🆕 **会話履歴のDB保存** → ブラウザを閉じても会話を再開可能
 - 🆕 **会話セッション管理** → 複数の会話を切り替え可能
-- 🆕 **会話履歴の取得API** → 過去の会話を一覧表示
+
+```python
+# リポジトリパターンによる抽象化
+class ConversationRepository:
+    def create_conversation(self) -> Conversation: ...
+    def add_message(self, conv_id: str, role: str, content: str) -> Message: ...
+    def get_conversation_history(self, conv_id: str) -> list[Message]: ...
+```
+
+**新規API:**
 
 ```
-新規API:
 POST /api/v1/conversations     → 新規会話作成
 GET  /api/v1/conversations     → 会話一覧取得
 GET  /api/v1/conversations/:id → 会話詳細取得
 DELETE /api/v1/conversations/:id → 会話削除
 ```
 
-**DBスキーマ:**
+**DBスキーマ (SQLModel):**
 
 ```
 conversations (会話セッション)
-├── id
-├── created_at
-└── messages[] (1:N)
-    ├── id
-    ├── role (user/assistant)
-    ├── content
-    └── created_at
+├── id: str
+├── created_at: datetime
+└── messages: list[Message] (Relationship)
+    ├── id: str
+    ├── conversation_id: str (ForeignKey)
+    ├── role: str (user/assistant)
+    ├── content: str
+    └── created_at: datetime
 ```
 
 ---
@@ -276,24 +289,41 @@ User: それは男性も取れますか？
 
 ---
 
-### Day 9 完了後: 本番デプロイ可能
+### Day 9 完了後: レイヤー分離 + 本番デプロイ可能 ⭐
 
-| 追加されるファイル   | 内容         |
-| :------------------- | :----------- |
-| `backend/Dockerfile` | コンテナ定義 |
-| `backend/config.py`  | 設定管理     |
-| `docker-compose.yml` | 開発環境定義 |
+| 追加されるファイル                          | 内容                           |
+| :------------------------------------------ | :----------------------------- |
+| `backend/routers/chat.py`                   | プレゼンテーション層（Router） |
+| `backend/services/chat_service.py`          | ビジネスロジック層（Service）  |
+| `backend/repositories/search_repository.py` | データアクセス層（Repository） |
+| `backend/Dockerfile`                        | コンテナ定義                   |
+| `backend/config.py`                         | 設定管理                       |
+| `docker-compose.yml`                        | 開発環境定義                   |
 
 **チャットボットの変化:**
 
+- 🆕 **3層アーキテクチャへのリファクタリング** → 責務が明確になり保守性が大幅向上
+- 🆕 **routers/ (プレゼンテーション層)** → HTTPリクエスト処理のみに専念
+- 🆕 **services/ (ビジネスロジック層)** → RAGパイプライン、Query Rewriting
+- 🆕 **repositories/ (データアクセス層)** → DB、Azure AI Searchへのアクセス抽象化
 - 🆕 **Dockerコンテナ化** → どの環境でも同じ動作を保証
 - 🆕 **型安全な設定管理** → 環境変数の検証付き読み込み
-- 🆕 **結合テスト** → 全体として動作することを保証
+
+```python
+# Before: main.py に全てが集中
+main.py (500行)
+
+# After: レイヤー分離
+routers/chat.py         # HTTPリクエスト処理
+services/chat_service.py # ビジネスロジック
+repositories/
+  ├── search_repository.py      # Azure AI Search
+  └── conversation_repository.py # DB操作
+```
 
 ```bash
 # デプロイコマンド
-docker build -t rag-chatbot .
-docker run -p 8000:8000 --env-file .env rag-chatbot
+docker-compose up -d  # DB + Backend を一括起動
 ```
 
 ---
@@ -347,20 +377,20 @@ rag-practice/
 
 ## 📅 スケジュール概要
 
-| Day       | テーマ              | 学ぶ理由                                 | ゴール                         |
-| :-------- | :------------------ | :--------------------------------------- | :----------------------------- |
-| **Day 1** | Python深化          | 実務コードは型安全・ログ・例外処理が必須 | 保守しやすいコードが書ける     |
-| **Day 2** | FastAPI実践 (1)     | DIやバリデーションは大規模開発の基本     | テストしやすい設計ができる     |
-| **Day 3** | FastAPI実践 (2)     | 一貫したエラー処理とテストで品質担保     | APIの品質を保証できる          |
-| **Day 4** | Azure AI Search (1) | インデックス設計が検索精度を左右する     | 適切なインデックスを設計できる |
-| **Day 5** | Azure AI Search (2) | ハイブリッド検索で精度が大幅向上         | 実務レベルの検索を実装できる   |
-| **休日**  | 週末                | 復習と発展学習                           | Week 1の定着                   |
-| **Day 6** | DB設計 & SQL        | 会話履歴の永続化は必須機能               | データを永続化できる           |
-| **Day 7** | RAG実装深化 (1)     | Query Rewritingの精度が回答品質を決める  | 文脈を理解した検索ができる     |
-| **Day 8** | RAG実装深化 (2)     | 検索結果の処理で最終的な回答品質が決まる | 信頼性の高い回答を生成できる   |
-| **Day 9** | 本番運用準備        | コンテナ化はモダン開発の必須スキル       | デプロイ可能な状態にできる     |
-| **休日**  | バッファ            | 遅れの調整、総復習                       | 知識の定着と総仕上げ           |
-| **休日**  | Extra               | CI/CD、最終確認                          | 発展的なスキル習得             |
+| Day       | テーマ                   | 学ぶ理由                                 | ゴール                             |
+| :-------- | :----------------------- | :--------------------------------------- | :--------------------------------- |
+| **Day 1** | Python深化               | 実務コードは型安全・ログ・例外処理が必須 | 保守しやすいコードが書ける         |
+| **Day 2** | FastAPI実践 (1)          | DIやバリデーションは大規模開発の基本     | テストしやすい設計ができる         |
+| **Day 3** | FastAPI実践 (2)          | 一貫したエラー処理とテストで品質担保     | APIの品質を保証できる              |
+| **Day 4** | Azure AI Search (1)      | インデックス設計が検索精度を左右する     | 適切なインデックスを設計できる     |
+| **Day 5** | Azure AI Search (2)      | ハイブリッド検索で精度が大幅向上         | 実務レベルの検索を実装できる       |
+| **休日**  | 週末                     | 復習と発展学習                           | Week 1の定着                       |
+| **Day 6** | SQLModel + PostgreSQL ⭐ | SQLModelとリポジトリパターンで保守性向上 | 型安全なDB操作ができる             |
+| **Day 7** | RAG実装深化 (1)          | Query Rewritingの精度が回答品質を決める  | 文脈を理解した検索ができる         |
+| **Day 8** | RAG実装深化 (2)          | 検索結果の処理で最終的な回答品質が決まる | 信頼性の高い回答を生成できる       |
+| **Day 9** | レイヤー分離 + Docker ⭐ | 保守性向上とデプロイ準備は必須           | 実務レベルのアーキテクチャが組める |
+| **休日**  | バッファ                 | 遅れの調整、総復習                       | 知識の定着と総仕上げ               |
+| **休日**  | Extra                    | CI/CD、最終確認                          | 発展的なスキル習得                 |
 
 ---
 
