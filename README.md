@@ -1,7 +1,7 @@
 # Internal Rules Chatbot (RAG Practice)
 
 RAG学習用に作成しました。
-社内規定（PDF/テキストデータ）に基づき、従業員の質問に回答するAIチャットボットです。
+社内規定（テキストデータ）に基づき、従業員の質問に回答するAIチャットボットです。
 RAG (Retrieval-Augmented Generation) 技術を使用し、正確な引用元を提示しながら回答します。
 
 ![Demo](./demo.png)

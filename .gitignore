@@ -1,11 +1,53 @@
+# AI Assistant
+.gemini/
+learning_roadmap.md
+
+# Environment Variables
+.env
+.env.*
+*.env
+*.local
+backend/.env
+
 # Editor
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
 # Dependencies
 node_modules/
 __pycache__/
+*.pyc
+*.pyo
+
+# Python Virtual Environment
+.venv/
+venv/
+env/
+.python-version
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Database (local development)
+*.db
+*.sqlite3
