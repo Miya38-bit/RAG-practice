@@ -1,12 +1,19 @@
 from fastapi import FastAPI
-from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-from utils import get_embedding
-from clients import openai_client, search_client
-from fastapi.responses import StreamingResponse
+from middleware import LoggingMiddleware
+from logger import get_logger
+from routers import chat
+from exception_handlers import rag_exception_handler, general_exception_handler
+from exceptions import RAGException
+
+logger = get_logger(__name__)
 
 # FastAPIインスタンスを生成
 app = FastAPI()
+
+# 例外ハンドラー設定
+app.add_exception_handler(RAGException, rag_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
 
 # CORS設定
 app.add_middleware(
@@ -17,71 +24,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ロギング用ミドルウェア設定
+app.add_middleware(LoggingMiddleware)
 
-class ChatRequest(BaseModel):
-    messages: list[dict[str, str]]
+# ルーター設定
+app.include_router(chat.router)
 
-
-async def stream_chat(request: ChatRequest, system_messages: dict[str, str]):
-    # 参考情報をもとに質問応答
-    response = await openai_client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[system_messages] + request.messages,
-        stream=True,
-    )
-
-    async for chunk in response:
-        if chunk.choices[0].delta.content is not None:
-            yield chunk.choices[0].delta.content
-
-
-@app.post("/chat")
-async def create_chat(request: ChatRequest):
-    try:
-        # 通訳用の質問作成
-        history_messages = f"これまでの会話履歴から質問の意図を誰が見ても意味がわかる検索ワードに書き直してください\n 【質問】{request.messages[-1]['content']}\n【会話履歴】\n"
-        for message in request.messages:
-            history_messages += f"{message['role']}: {message['content']}\n"
-
-        # 質問の意図を検索ワードに書き直してもらう
-        response_rewrite = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": history_messages}],
-        )
-        print("検索ワード: ", response_rewrite.choices[0].message.content)
-
-        # ベクトル化
-        print("Embedding作成中...")
-        vector_query = await get_embedding(response_rewrite.choices[0].message.content)
-
-        # ベクトルデータから参考情報検索
-        print("ベクトルデータから参考情報検索中...")
-        results = search_client.search(
-            search_text=None,
-            vector_queries=[
-                {
-                    "vector": vector_query,
-                    "k": 2,
-                    "fields": "embedding",
-                    "kind": "vector",
-                }
-            ],
-        )
-
-        # 参考情報の作成
-        context = ""
-        for result in results:
-            context += f"【出典: {result['source']} (P.{result['page']}) / カテゴリ: {result['category']}】\n"
-            context += f"{result['content']}\n\n"
-
-        system_messages = {
-            "role": "system",
-            "content": f"以下の情報を元に質問に答えてください。\n\n【参考情報】\n{context}",
-        }
-
-        return StreamingResponse(
-            stream_chat(request, system_messages), media_type="text/event-stream"
-        )
-
-    except Exception as e:
-        return {"message": str(e), "status": "error"}
