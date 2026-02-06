@@ -7,7 +7,6 @@ from utils import (
     create_system_message,
 )
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
 from schemas import ChatRequest
 from fastapi import Depends
 from dependencies import get_openai_client, get_search_client
@@ -24,7 +23,7 @@ async def chat(
     request: ChatRequest,
     openai_client: AsyncOpenAI = Depends(get_openai_client),
     search_client: SearchClient = Depends(get_search_client),
-) -> AsyncGenerator[str, None]:
+) -> StreamingResponse:
     # 通訳用の質問作成
     history_messages = f"これまでの会話履歴から質問の意図を誰が見ても意味がわかる検索ワードに書き直してください\n 【質問】{request.messages[-1].content}\n【会話履歴】\n"
     for message in request.messages:

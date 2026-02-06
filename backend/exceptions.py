@@ -15,3 +15,6 @@ class SearchError(RAGException):
 
 class LLMError(RAGException):
     pass
+
+class ConfigurationError(RAGException):
+    pass

@@ -12,7 +12,8 @@ logger = get_logger(__name__)
 app = FastAPI()
 
 # 例外ハンドラー設定
-app.add_exception_handler(RAGException, rag_exception_handler)
+# FastAPI の async handler の型定義制限のため、type: ignore を使用
+app.add_exception_handler(RAGException, rag_exception_handler) # type: ignore
 app.add_exception_handler(Exception, general_exception_handler)
 
 # CORS設定

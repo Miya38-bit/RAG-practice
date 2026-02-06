@@ -16,7 +16,7 @@ class JSONFormatter(logging.Formatter):
 
         # extra属性があれば追加
         if hasattr(record, "extra_fields"):
-            log_data.update(record.extra_fields)
+            log_data.update(record.extra_fields) # type: ignore[attr-defined]
         # pythonの辞書をJSON形式で出力
         return json.dumps(log_data, ensure_ascii=False)
 

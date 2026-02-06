@@ -10,8 +10,8 @@ class MockContent:
 
 @dataclass
 class MockChoice:
-    delta: MockContent = None  # ストリーミング用
-    message: MockContent = None  # 通常用
+    delta: MockContent | None = None  # ストリーミング用
+    message: MockContent | None = None  # 通常用
 
 
 @dataclass
@@ -19,6 +19,7 @@ class MockResponse:
     choices: list[MockChoice]
 
 
+# 正常系テスト: チャット機能が正常に動作する場合
 def test_chat_success(client, mock_openai_client, mock_search_client):
     # 1. 検索用モック: SearchClient.search の戻り値を設定
     mock_search_client.search.return_value = [
@@ -48,7 +49,7 @@ def test_chat_success(client, mock_openai_client, mock_search_client):
         # パターンB: 通常応答 (クエリ書き換え)
         else:
             return MockResponse(
-                choices=[MockChoice(message=MockContent("書き換えられたクエリ"))]
+                choices=[MockChoice(message=MockContent("書き換えられたクエリで質問"))]
             )
 
     mock_openai_client.chat.completions.create.side_effect = mock_openai_side_effect
@@ -63,6 +64,34 @@ def test_chat_success(client, mock_openai_client, mock_search_client):
     assert "これはテストです。" in response.text
 
 
+def test_chat_no_search_results(client, mock_openai_client, mock_search_client):
+    mock_search_client.search.return_value = []
+
+    async def mock_openai_side_effect(model, messages, stream=False, **kwargs):
+        if stream:
+
+            async def stream_generator():
+                yield MockResponse(
+                    choices=[MockChoice(delta=MockContent("参考情報がありません。"))]
+                )
+
+            return stream_generator()
+        else:
+            return MockResponse(
+                choices=[MockChoice(message=MockContent("書き換えられたクエリで質問"))]
+            )
+    
+    mock_openai_client.chat.completions.create.side_effect = mock_openai_side_effect
+
+    response = client.post(
+        "/api/v1/chat", json={"messages": [{"role": "user", "content": "質問"}]}
+    )
+
+    assert response.status_code == 200
+    assert "参考情報がありません。" in response.text
+
+
+# 異常系テスト: 検索機能が原因不明のエラーで失敗する場合
 def test_chat_search_error(client, mock_openai_client, mock_search_client):
     # 検索機能が「原因不明のエラー」で失敗するように設定
     mock_search_client.search.side_effect = Exception(
@@ -90,6 +119,23 @@ def test_chat_search_error(client, mock_openai_client, mock_search_client):
     assert "SearchError" in response.text
 
 
+# 異常系テスト: メッセージが空の場合
+def test_chat_empty_messages(client):
+    response = client.post("/api/v1/chat", json={"messages": []})
+    assert response.status_code == 422
+    assert "messages" in response.text
+
+
+# 異常系テスト: メッセージのcontentが空の場合
+def test_chat_empty_content(client):
+    response = client.post(
+        "/api/v1/chat", json={"messages": [{"role": "user", "content": ""}]}
+    )
+    assert response.status_code == 422
+    assert "content" in response.text
+
+
+# 異常系テスト: OpenAIのストリーミング中にエラーが発生する場合
 def test_chat_openai_error(client, mock_openai_client, mock_search_client):
     # 1. 検索機能は成功させる
     mock_search_client.search.return_value = []
@@ -106,5 +152,6 @@ def test_chat_openai_error(client, mock_openai_client, mock_search_client):
     # 「RuntimeError が起きるはずだ」ということをテストします
     with pytest.raises(RuntimeError):
         client.post(
-            "/api/v1/chat", json={"messages": [{"role": "user", "content": "こんにちは"}]}
+            "/api/v1/chat",
+            json={"messages": [{"role": "user", "content": "こんにちは"}]},
         )

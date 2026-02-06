@@ -119,6 +119,7 @@ export default function Home() {
 
               // バックエンドにリクエストを送信
               setLoading(true);
+
               const reader = await fetchChat(
                 'http://127.0.0.1:8000/chat',
                 newHistoryMessages.slice(-10)

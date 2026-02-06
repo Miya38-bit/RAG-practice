@@ -1,5 +1,8 @@
 # AI Assistant
 .gemini/
+.claude/              # Claude Code のメモリーとキャッシュ
+.claudeignore         # Claude Code の除外設定
+CLAUDE.md             # プロジェクト固有の Claude 設定
 
 # Environment Variables
 .env
@@ -50,3 +53,21 @@ build/
 # Database (local development)
 *.db
 *.sqlite3
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# 学習・実験用の一時ファイル
+tmp/
+temp/
+scratch/
+*.bak
+*.tmp
+*_backup.*
+
+# RAG開発用（将来的に追加される可能性）
+data/raw/             # 生データ（個人情報含む可能性）
+data/processed/       # 処理済みデータ
+uploads/              # アップロードファイル
+downloads/            # ダウンロードファイル
