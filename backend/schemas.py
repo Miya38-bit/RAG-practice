@@ -2,12 +2,13 @@ from pydantic import BaseModel, Field
 from typing import Literal
 
 
+Role = Literal["system", "user", "assistant"]
+
 class SystemMessage(BaseModel):
-    role: Literal["system", "user", "assistant"]
+    role: Role
     content: str = Field(
         min_length=1, max_length=1000, description="メッセージの内容（1-1000文字）"
     )
-
 
 class ChatRequest(BaseModel):
     messages: list[SystemMessage] = Field(

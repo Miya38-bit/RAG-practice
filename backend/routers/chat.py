@@ -39,7 +39,8 @@ async def chat(
     vector_query = await get_embedding(response_rewrite, openai_client)
 
     # ベクトルデータから参考情報検索
-    results = await search_vector(vector_query, search_client)
+    results = await search_vector(vector_query, response_rewrite, search_client)
+    print("検索結果:", results[0]["content"])
 
     # 参考情報の作成
     context = ""
