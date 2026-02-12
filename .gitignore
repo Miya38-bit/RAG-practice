@@ -1,8 +1,17 @@
 # AI Assistant
 .gemini/
-.claude/              # Claude Code のメモリーとキャッシュ
-.claudeignore         # Claude Code の除外設定
-CLAUDE.md             # プロジェクト固有の Claude 設定
+
+# Claude Code のメモリーとキャッシュ
+.claude/
+
+# Claude Code の除外設定
+.claudeignore
+
+# GitHub Copilot 設定
+.github/
+
+# プロジェクト固有の Claude 設定
+CLAUDE.md
 
 # Environment Variables
 .env

@@ -8,8 +8,21 @@ from logger import get_logger
 from exceptions import EmbeddingError, SearchError, LLMError
 from typing import List, AsyncGenerator
 from schemas import SystemMessage, Role
+from exceptions import ConfigurationError
+import os
+from dotenv import load_dotenv
 
 logger = get_logger(__name__)
+
+
+load_dotenv()
+
+
+def get_env(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        raise ConfigurationError(f"{key}が設定されていません")
+    return value
 
 
 # 引数からベクトル化したデータを取得

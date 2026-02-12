@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from middleware import LoggingMiddleware
 from logger import get_logger
-from routers import chat
+from routers import chat, history
 from exception_handlers import rag_exception_handler, general_exception_handler
 from exceptions import RAGException
 
@@ -30,4 +30,4 @@ app.add_middleware(LoggingMiddleware)
 
 # ルーター設定
 app.include_router(chat.router)
-
+app.include_router(history.router)

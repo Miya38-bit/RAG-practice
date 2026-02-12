@@ -6,3 +6,8 @@ azure-search-documents
 azure-core
 azure-identity
 pydantic
+
+# Database
+sqlmodel
+psycopg2-binary
+alembic
