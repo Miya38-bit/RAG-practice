@@ -1,5 +1,5 @@
 from sqlmodel import Session, select, desc, asc
-from models import Conversation, Message
+from models import Conversation, Message, Role
 
 """会話リポジトリモジュール
 
@@ -45,9 +45,20 @@ class ConversationRepository:
             self.session.commit()
             return True
         return False
+    
+    # 会話タイトル更新
+    def update_conversation_title(self, conversation_id: str, title: str) -> Conversation | None:
+        conversation = self.get_conversation(conversation_id)
+        if conversation:
+            conversation.title = title
+            self.session.add(conversation)
+            self.session.commit()
+            self.session.refresh(conversation)
+            return conversation
+        return None
 
     # 会話にメッセージ追加
-    def add_message(self, conversation_id: str, role: str, content: str) -> Message:
+    def add_message(self, conversation_id: str, role: Role, content: str) -> Message:
         # メッセージ作成
         message = Message(conversation_id=conversation_id, role=role, content=content)
         # メッセージをセッションに追加
